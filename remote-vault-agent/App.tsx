@@ -12,7 +12,8 @@ import {
   StatusBar,
   Modal,
   Animated,
-  Easing
+  Easing,
+  Image
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
@@ -27,9 +28,12 @@ import {
   MousePointer2,
   Layers,
   ChevronRight,
-  X
+  X,
+  BatteryWarning,
+  ShieldAlert
 } from 'lucide-react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Camera, CameraView } from 'expo-camera';
 import * as Linking from 'expo-linking';
@@ -45,6 +49,30 @@ export default function App() {
   const [status, setStatus] = useState('OFFLINE');
   const [error, setError] = useState('');
   const [deviceInfo, setDeviceInfo] = useState<any>(null);
+  // App Splash State
+  const [showAppSplash, setShowAppSplash] = useState(true);
+  const splashOpacity = useRef(new Animated.Value(1)).current;
+  const splashScale = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    // Premium entry animation
+    Animated.spring(splashScale, {
+      toValue: 1,
+      friction: 4,
+      tension: 10,
+      useNativeDriver: true,
+    }).start();
+
+    const timer = setTimeout(() => {
+      Animated.timing(splashOpacity, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => setShowAppSplash(false));
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+  
   
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -74,15 +102,21 @@ export default function App() {
   }, [isScanning]);
 
   const handleRequestControl = () => {
-    // Open Accessibility Settings
     IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
   };
 
   const handleRequestOverlay = () => {
-    // Open Overlay Settings
     IntentLauncher.startActivityAsync('android.settings.action.MANAGE_OVERLAY_PERMISSION', {
         data: `package:com.remotevault.agent`
     });
+  };
+
+  const handleRequestBattery = () => {
+    IntentLauncher.startActivityAsync('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
+  };
+
+  const handleRequestAdmin = () => {
+    IntentLauncher.startActivityAsync('android.settings.DEVICE_ADMIN_SETTINGS');
   };
 
   const [scannedOnce, setScannedOnce] = useState(false);
@@ -117,20 +151,37 @@ export default function App() {
     setIsConnecting(true);
     setError('');
     
-    await socketService.connect(key, (event, data) => {
-      if (event === 'status') {
-        setStatus(data);
-        if (data === 'OFFLINE') setIsConnecting(false);
-      }
-      if (event === 'handshake:success') {
-        setDeviceInfo(data);
+    // Add a safety timeout (15 seconds)
+    const timeout = setTimeout(() => {
+      if (isConnecting) {
         setIsConnecting(false);
+        setError('Connection Timeout: The server took too long to respond. Please ensure the backend is awake.');
       }
-      if (event === 'error') {
-        setError(data);
-        setIsConnecting(false);
-      }
-    });
+    }, 15000);
+
+    try {
+      await socketService.connect(key, (event, data) => {
+        clearTimeout(timeout); // Clear timeout on any valid response
+        
+        if (event === 'status') {
+          setStatus(data);
+          if (data === 'OFFLINE') setIsConnecting(false);
+        }
+        if (event === 'handshake:success') {
+          setDeviceInfo(data);
+          setIsConnecting(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        if (event === 'error') {
+          setError(data);
+          setIsConnecting(false);
+        }
+      });
+    } catch (err: any) {
+      clearTimeout(timeout);
+      setIsConnecting(false);
+      setError(`Fatal Error: ${err.message}`);
+    }
   };
 
   useEffect(() => {
@@ -140,8 +191,20 @@ export default function App() {
     })();
 
     // Deep Linking Listener
-    const handleDeepLink = (event: { url: string }) => {
-      const { queryParams } = Linking.parse(event.url);
+    const handleDeepLink = async (event: { url: string }) => {
+      const { queryParams, path } = Linking.parse(event.url);
+      
+      // Handle OAuth Redirect Back from Web
+      if (path === 'auth' || queryParams?.token) {
+        const token = queryParams?.token as string;
+        if (token) {
+           await AsyncStorage.setItem('operatorToken', token);
+           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+           setCurrentScreen('MAIN');
+        }
+      }
+      
+      // Handle Provisioning Key
       if (queryParams?.key) {
         const key = queryParams.key as string;
         setProvisioningKey(key);
@@ -152,6 +215,7 @@ export default function App() {
 
     const subscription = Linking.addEventListener('url', handleDeepLink);
     
+
     // Check if app was opened via link
     Linking.getInitialURL().then((url) => {
       if (url) handleDeepLink({ url });
@@ -167,8 +231,19 @@ export default function App() {
         colors={['#020408', '#050a14', '#020408']}
         style={styles.background}
       />
-      
-      <SafeAreaView style={styles.safeArea}>
+
+      {showAppSplash && (
+        <Animated.View style={[styles.splashContainer, { opacity: splashOpacity }]}>
+           <Animated.View style={{ transform: [{ scale: splashScale }], alignItems: 'center' }}>
+              <Image source={require('./assets/icon.png')} style={{ width: 120, height: 120, marginBottom: 20 }} resizeMode="contain" />
+              <Text style={styles.splashTitle}>RemoteVault</Text>
+              <Text style={styles.splashSubtitle}>INITIALIZING SECURE AGENT...</Text>
+           </Animated.View>
+        </Animated.View>
+      )}
+
+      {!showAppSplash && (
+        <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
@@ -267,12 +342,12 @@ export default function App() {
                   <ShieldCheck size={64} color="#22c55e" style={{ marginBottom: 15 }} />
                   <Text style={styles.successTitle}>Identity Verified</Text>
                   <Text style={styles.successText}>
-                    Authorized by {deviceInfo.ownerName}.
+                    Authorized by {deviceInfo.ownerName}. Device is now linked for Lifetime Unattended Access.
                   </Text>
                   
                   <View style={styles.permCard}>
-                    <Text style={styles.permTitle}>REMOTE ACCESS REQUIRED</Text>
-                    <Text style={styles.permDesc}>The website requires these background permissions to control this device.</Text>
+                    <Text style={styles.permTitle}>FULL LIFETIME CONTROL REQUIRED</Text>
+                    <Text style={styles.permDesc}>To allow uninterrupted, 24/7 remote access from the dashboard, grant all permissions below:</Text>
                     
                     <TouchableOpacity style={styles.permItem} onPress={handleRequestControl}>
                         <View style={styles.permIconBox}>
@@ -280,7 +355,7 @@ export default function App() {
                         </View>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.permItemTitle}>Accessibility Service</Text>
-                            <Text style={styles.permItemDesc}>Required for remote touch/click control.</Text>
+                            <Text style={styles.permItemDesc}>Required for remote touch & gesture control.</Text>
                         </View>
                         <ChevronRight size={16} color="#334155" />
                     </TouchableOpacity>
@@ -291,7 +366,29 @@ export default function App() {
                         </View>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.permItemTitle}>Overlay Display</Text>
-                            <Text style={styles.permItemDesc}>Required to sync the visual state.</Text>
+                            <Text style={styles.permItemDesc}>Required to capture and sync visual state.</Text>
+                        </View>
+                        <ChevronRight size={16} color="#334155" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.permItem} onPress={handleRequestBattery}>
+                        <View style={styles.permIconBox}>
+                            <BatteryWarning size={16} color="#eab308" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.permItemTitle}>Ignore Battery Limits</Text>
+                            <Text style={styles.permItemDesc}>Prevents OS from killing the agent offline.</Text>
+                        </View>
+                        <ChevronRight size={16} color="#334155" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.permItem, { borderBottomWidth: 0 }]} onPress={handleRequestAdmin}>
+                        <View style={[styles.permIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                            <ShieldAlert size={16} color="#ef4444" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.permItemTitle}>Device Administrator</Text>
+                            <Text style={styles.permItemDesc}>Required for deep system control & lock.</Text>
                         </View>
                         <ChevronRight size={16} color="#334155" />
                     </TouchableOpacity>
@@ -327,7 +424,7 @@ export default function App() {
 
                   <TouchableOpacity 
                     style={[styles.button, (!provisioningKey || isConnecting) && styles.buttonDisabled]}
-                    onPress={handleConnect}
+                    onPress={() => handleConnect()}
                     disabled={!provisioningKey || isConnecting}
                   >
                     <LinearGradient
@@ -359,6 +456,7 @@ export default function App() {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      )}
     </View>
   );
 }
@@ -374,6 +472,27 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
+  },
+  splashContainer: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 9999,
+    backgroundColor: '#05070a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  splashTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  splashSubtitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#3b82f6',
+    letterSpacing: 3,
+    marginTop: 8,
   },
   safeArea: {
     flex: 1,

@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
+import { RemoteVaultIcon } from "@/components/RemoteVaultIcon";
 
 export function SiteNavigation() {
   const { data: session } = useSession();
@@ -80,10 +81,8 @@ export function SiteNavigation() {
       <nav style={navStyle}>
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-2 md:px-8">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-2xl font-black text-white tracking-tighter uppercase hidden sm:block">RemoteVault</span>
+            <RemoteVaultIcon size={40} />
+            <span className="text-2xl font-black text-white tracking-tighter uppercase hidden sm:block mt-1">RemoteVault</span>
           </Link>
           
           <div className="flex items-center gap-6">
@@ -118,8 +117,8 @@ export function SiteNavigation() {
             >
                <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5">
                   <div className="flex items-center gap-3">
-                    <Shield className="text-blue-500" size={24} />
-                    <span className="font-black text-white uppercase tracking-tighter text-xl">RemoteVault</span>
+                    <RemoteVaultIcon size={28} />
+                    <span className="font-black text-white uppercase tracking-tighter text-xl mt-1">RemoteVault</span>
                   </div>
                   <button 
                     onClick={() => setMobileMenuOpen(false)}

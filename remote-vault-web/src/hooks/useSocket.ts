@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react';
 import { CryptoVault } from '@/lib/crypto';
 
 // The URL of our Backend Relay Server
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://remote-vault-core.onrender.com';
 
 export function useSocket() {
   const { data: session } = useSession();

@@ -24,7 +24,9 @@ import {
   Database,
   BarChart3,
   Server,
-  Lock
+  Lock,
+  Trash2,
+  Info
 } from "lucide-react";
 import Link from "next/link";
 import { useSocket } from "@/hooks/useSocket";
@@ -42,6 +44,8 @@ interface Device {
 export default function DashboardPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const { deviceStatuses, isConnected, socket } = useSocket();
 
@@ -59,6 +63,25 @@ export default function DashboardPage() {
       console.error("Failed to fetch systems", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteDevice = async (deviceId: string) => {
+    setIsDeleting(deviceId);
+    try {
+      const res = await fetch(`/api/devices/${deviceId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setDevices(prev => prev.filter(d => d.id !== deviceId));
+        setOpenMenuId(null);
+      } else {
+        console.error("Failed to delete device");
+      }
+    } catch (error) {
+      console.error("Failed to delete device", error);
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -145,11 +168,13 @@ export default function DashboardPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}
-                className="group relative p-8 rounded-[2rem] bg-white/[0.02] border border-white/5 hover:border-blue-500/30 hover:bg-white/[0.03] transition-all overflow-hidden flex flex-col h-full"
+                className="group relative p-8 rounded-[2rem] bg-white/[0.02] border border-white/5 hover:border-blue-500/30 hover:bg-white/[0.03] transition-all flex flex-col h-full"
               >
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 rounded-[2rem] overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
                 
-                <div className="flex justify-between items-start mb-12">
+                <div className="relative flex justify-between items-start mb-12">
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border transition-all ${isOnline ? 'bg-blue-600 text-white border-blue-400/20 shadow-xl' : 'bg-white/5 text-slate-600 border-white/10'}`}>
                     <Icon size={24} />
                   </div>
@@ -162,7 +187,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="relative space-y-4">
                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">{device.type} SYSTEM</p>
                   <h3 className="text-2xl font-bold text-white tracking-tight leading-none group-hover:text-blue-400 transition-colors">
                     {device.name}
@@ -179,13 +204,64 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="mt-8 pt-8 border-t border-white/5 flex items-center justify-between">
-                   <button className="text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+                <div className="mt-8 pt-8 border-t border-white/5 flex items-center justify-between relative">
+                   <Link 
+                      href={`/dashboard/device/${device.id}`}
+                      className="text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-2"
+                   >
                       Access Node <ArrowUpRight size={14} />
-                   </button>
-                   <button className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-700 hover:text-slate-300">
-                      <MoreVertical size={18} />
-                   </button>
+                   </Link>
+                   
+                   <div className="relative">
+                     {openMenuId === device.id && (
+                       <div 
+                         className="fixed inset-0 z-40" 
+                         onClick={(e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           setOpenMenuId(null);
+                         }} 
+                       />
+                     )}
+                     <button 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === device.id ? null : device.id);
+                        }}
+                        className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-700 hover:text-slate-300 relative z-50"
+                     >
+                        <MoreVertical size={18} />
+                     </button>
+
+                     <AnimatePresence>
+                       {openMenuId === device.id && (
+                         <motion.div 
+                           initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                           animate={{ opacity: 1, scale: 1, y: 0 }}
+                           exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                           className="absolute right-0 bottom-full mb-2 w-36 bg-[#0a0f18] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 flex flex-col"
+                         >
+                           <Link 
+                             href={`/dashboard/device/${device.id}`}
+                             className="flex items-center gap-2 w-full px-4 py-3 text-xs font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-colors text-left"
+                           >
+                             <Info size={14} /> Details
+                           </Link>
+                           <button 
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               handleDeleteDevice(device.id);
+                             }}
+                             disabled={isDeleting === device.id}
+                             className="flex items-center gap-2 w-full px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-500/10 transition-colors text-left border-t border-white/5 disabled:opacity-50"
+                           >
+                             <Trash2 size={14} /> {isDeleting === device.id ? 'Deleting...' : 'Delete'}
+                           </button>
+                         </motion.div>
+                       )}
+                     </AnimatePresence>
+                   </div>
                 </div>
               </motion.div>
             );
