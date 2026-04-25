@@ -15,7 +15,7 @@ export function RemoteVaultIcon({ className = "", size = 40, animated = false }:
     animate: { 
       opacity: 1, 
       scale: 1,
-      transition: { duration: 0.5, ease: "easeOut" }
+      transition: { duration: 0.5, ease: "easeOut" as const }
     }
   };
 
@@ -24,7 +24,7 @@ export function RemoteVaultIcon({ className = "", size = 40, animated = false }:
     animate: { 
       pathLength: 1, 
       opacity: 1,
-      transition: { duration: 1.5, ease: "easeInOut", repeat: animated ? Infinity : 0, repeatType: "reverse" as const }
+      transition: { duration: 1.5, ease: "easeInOut" as const, repeat: animated ? Infinity : 0, repeatType: "reverse" as const }
     }
   };
 
@@ -33,7 +33,7 @@ export function RemoteVaultIcon({ className = "", size = 40, animated = false }:
     animate: { 
       scale: 1, 
       opacity: [0.5, 1, 0.5],
-      transition: { duration: 2, ease: "easeInOut", repeat: animated ? Infinity : 0 }
+      transition: { duration: 2, ease: "easeInOut" as const, repeat: animated ? Infinity : 0 }
     }
   };
 
