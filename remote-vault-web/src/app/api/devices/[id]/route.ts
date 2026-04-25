@@ -66,7 +66,13 @@ export async function GET(
 
     const device = await prisma.device.findUnique({
       where: { id },
-      include: { owner: true }
+      include: { 
+        owner: true,
+        sessions: {
+          take: 5,
+          orderBy: { startTime: 'desc' }
+        }
+      }
     });
 
     if (!device) {

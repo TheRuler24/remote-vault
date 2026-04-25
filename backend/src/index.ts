@@ -13,6 +13,7 @@ const app = fastify({ logger: true });
 // Registry of active sockets
 const socketRegistry = new Map<string, string>(); // socket.id -> userId
 const deviceRegistry = new Map<string, string>(); // socket.id -> deviceId
+const activeSessions = new Map<string, string>(); // socket.id -> sessionId
 
 const start = async () => {
     try {
@@ -148,6 +149,63 @@ const start = async () => {
                     params: data.params,
                     ref: socket.id
                 });
+
+                // Track Remote Session Start
+                if (data.cmd === 'screen:start') {
+                    try {
+                        const session = await prisma.remoteSession.create({
+                            data: {
+                                deviceId: data.targetDeviceId,
+                                operatorId: userId,
+                                status: 'ACTIVE'
+                            }
+                        });
+                        activeSessions.set(socket.id, session.id);
+                        console.log(`[SESSION] Started: ${session.id} for Device: ${data.targetDeviceId}`);
+                    } catch (err) {
+                        console.error('Failed to create session:', err);
+                    }
+                }
+
+                // Track Remote Session Stop
+                if (data.cmd === 'screen:stop') {
+                    const sessionId = activeSessions.get(socket.id);
+                    if (sessionId) {
+                        await prisma.remoteSession.update({
+                            where: { id: sessionId },
+                            data: { endTime: new Date(), status: 'COMPLETED' }
+                        });
+                        activeSessions.delete(socket.id);
+                        console.log(`[SESSION] Completed: ${sessionId}`);
+                    }
+                }
+            });
+
+            // 6. Real-time Screen Relay (Device -> User Room)
+            socket.on('screen:frame', (data: { data: string, timestamp: number }) => {
+                const deviceId = deviceRegistry.get(socket.id);
+                const userId = socketRegistry.get(socket.id);
+                
+                if (deviceId && userId) {
+                    // Relay to the entire user room so all dashboard instances see it
+                    io.to(`user:${userId}`).emit('screen:frame', {
+                        deviceId,
+                        data: data.data,
+                        timestamp: data.timestamp
+                    });
+                }
+            });
+
+            // 7. Command Output Relay (Device -> Specific Web Client)
+            socket.on('command:result', (data: { ref: string, output: string }) => {
+                const deviceId = deviceRegistry.get(socket.id);
+                if (deviceId && data.ref) {
+                    // Relay specifically to the web client that requested the command
+                    io.to(data.ref).emit('command:output', {
+                        deviceId,
+                        output: data.output
+                    });
+                }
             });
 
             socket.on('disconnect', async () => {
@@ -168,6 +226,17 @@ const start = async () => {
                     
                     deviceRegistry.delete(socket.id);
                 }
+
+                // Cleanup active sessions on disconnect
+                const sessionId = activeSessions.get(socket.id);
+                if (sessionId) {
+                    await prisma.remoteSession.update({
+                        where: { id: sessionId },
+                        data: { endTime: new Date(), status: 'COMPLETED' }
+                    });
+                    activeSessions.delete(socket.id);
+                }
+
                 socketRegistry.delete(socket.id);
                 console.log(`Disconnected: ${socket.id}`);
             });

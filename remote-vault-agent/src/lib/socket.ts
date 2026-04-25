@@ -6,6 +6,7 @@ const SOCKET_URL = 'https://aethernode.onrender.com';
 class SocketService {
   private socket: Socket | null = null;
   private isConnected: boolean = false;
+  private screenInterval: NodeJS.Timeout | null = null;
 
   async connect(provisioningKey: string, onEvent: (event: string, data: any) => void) {
     if (this.socket?.connected) return;
@@ -79,12 +80,50 @@ class SocketService {
         return JSON.stringify(info);
       case 'sys:ping':
         return 'PONG';
+      case 'screen:start':
+        this.startScreenStream();
+        return 'STREAM_STARTING';
+      case 'screen:stop':
+        this.stopScreenStream();
+        return 'STREAM_STOPPED';
+      case 'input:tap':
+        console.log(`[INPUT] Tapping at: ${params.x}, ${params.y}`);
+        // Here we would use AccessibilityService to inject touch
+        return `Tapped ${params.x}, ${params.y}`;
+      case 'input:home':
+        console.log('[INPUT] Going Home');
+        return 'Home button pressed';
       default:
         return `Unknown command: ${cmd}`;
     }
   }
 
+  private startScreenStream() {
+    if (this.screenInterval) return;
+    console.log('[SCREEN] Starting capture...');
+    
+    this.screenInterval = setInterval(() => {
+      if (this.socket?.connected) {
+        // In a real app, we'd capture the actual screen buffer
+        // For now, we'll signal we are "ready" or send a placeholder
+        this.socket.emit('screen:frame', {
+          data: 'placeholder_base64_data',
+          timestamp: Date.now()
+        });
+      }
+    }, 1000); // 1 FPS for demo
+  }
+
+  private stopScreenStream() {
+    if (this.screenInterval) {
+      clearInterval(this.screenInterval);
+      this.screenInterval = null;
+      console.log('[SCREEN] Stopped capture.');
+    }
+  }
+
   disconnect() {
+    this.stopScreenStream();
     this.socket?.disconnect();
     this.socket = null;
   }

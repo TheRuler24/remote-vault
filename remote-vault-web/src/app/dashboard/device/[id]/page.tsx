@@ -30,6 +30,9 @@ export default function DeviceDetailsPage() {
   const [terminalHistory, setTerminalHistory] = useState<{type: 'in' | 'out' | 'sys', text: string}[]>([
     { type: 'sys', text: 'Initializing secure WebSocket tunnel...' }
   ]);
+  const [screenFrame, setScreenFrame] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [remoteLog, setRemoteLog] = useState<string[]>([]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const { socket, isConnected, sendCommand } = useSocket();
 
@@ -52,8 +55,14 @@ export default function DeviceDetailsPage() {
       setTerminalHistory(prev => [...prev, { type: 'out', text: data.output }]);
     });
 
+    socket.on('screen:frame', (data: { data: string }) => {
+      setScreenFrame(data.data);
+      if (!isStreaming) setIsStreaming(true);
+    });
+
     return () => {
       socket.off('command:output');
+      socket.off('screen:frame');
     };
   }, [socket]);
 
@@ -213,6 +222,7 @@ export default function DeviceDetailsPage() {
         <div className="flex gap-4 border-b border-white/5 pb-px relative">
            {[
              { id: 'terminal', label: 'Remote Shell', icon: Terminal },
+             { id: 'remote', label: 'Remote Control', icon: Smartphone },
              { id: 'files', label: 'File Explorer', icon: Folder },
              { id: 'specs', label: 'Hardware Specs', icon: Cpu }
            ].map(tab => (
@@ -276,6 +286,107 @@ export default function DeviceDetailsPage() {
                  </div>
               </motion.div>
            )}
+           {activeTab === 'remote' && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                className="h-full flex flex-col items-center justify-center space-y-6"
+              >
+                 <div className="relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-600 rounded-[3rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                    <div className="relative w-[280px] h-[580px] bg-[#05070a] rounded-[3rem] border-[8px] border-[#1a1f2e] shadow-2xl overflow-hidden flex flex-col items-center justify-center">
+                       {/* Phone Notch */}
+                       <div className="absolute top-0 w-32 h-6 bg-[#1a1f2e] rounded-b-2xl z-20" />
+                       
+                       <AnimatePresence mode="wait">
+                          {!isOnline ? (
+                             <motion.div 
+                               key="offline"
+                               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                               className="flex flex-col items-center justify-center p-8 text-center space-y-4"
+                             >
+                                <Lock size={40} className="text-slate-700" />
+                                <p className="text-slate-500 font-bold text-sm uppercase tracking-widest">Node Offline</p>
+                                <p className="text-[10px] text-slate-600">Establish a secure link to initiate remote vision.</p>
+                             </motion.div>
+                          ) : (
+                             <motion.div 
+                               key="online"
+                               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                               className="w-full h-full relative"
+                             >
+                                {/* Live Screen / Mockup */}
+                                <div className="absolute inset-0 overflow-hidden">
+                                   {screenFrame && screenFrame !== 'placeholder_base64_data' ? (
+                                      <img src={`data:image/jpeg;base64,${screenFrame}`} className="w-full h-full object-cover" />
+                                   ) : (
+                                      <div className="relative w-full h-full">
+                                         <img 
+                                           src="/android_remote_control_mockup_1777102421456.png" 
+                                           className={`w-full h-full object-cover transition-opacity duration-1000 ${isStreaming ? 'opacity-100' : 'opacity-40 grayscale'}`} 
+                                         />
+                                         {!isStreaming && (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-10 bg-black/40 backdrop-blur-[2px]">
+                                               <Activity size={32} className="text-blue-600 animate-pulse" />
+                                               <p className="mt-6 text-blue-500 font-bold text-xs uppercase tracking-widest animate-pulse text-center">Ready to Stream</p>
+                                            </div>
+                                         )}
+                                      </div>
+                                   )}
+                                </div>
+                                
+                                {/* Interactive Overlay */}
+                                <div className="absolute inset-0 z-10 cursor-crosshair" onClick={(e) => {
+                                   const rect = e.currentTarget.getBoundingClientRect();
+                                   const x = Math.round(((e.clientX - rect.left) / rect.width) * 1080);
+                                   const y = Math.round(((e.clientY - rect.top) / rect.height) * 2400);
+                                   if (isConnected && device?.id) {
+                                      sendCommand(device.id, 'input:tap', { x, y });
+                                      setRemoteLog(prev => [`Tapped at [${x}, ${y}]`, ...prev.slice(0, 5)]);
+                                   }
+                                }} />
+                             </motion.div>
+                          )}
+                       </AnimatePresence>
+
+                       {/* Navigation Bar */}
+                       <div className="absolute bottom-2 w-24 h-1 bg-white/20 rounded-full z-20" />
+                    </div>
+                 </div>
+
+                 <div className="flex gap-4">
+                    <button 
+                       disabled={!isOnline}
+                       onClick={() => sendCommand(device!.id, 'screen:start')}
+                       className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(37,99,235,0.3)]"
+                    >
+                       Start Session
+                    </button>
+                    <button 
+                       disabled={!isOnline}
+                       onClick={() => {
+                          sendCommand(device!.id, 'input:home');
+                          setRemoteLog(prev => [`Pressed HOME button`, ...prev.slice(0, 5)]);
+                       }}
+                       className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 border border-white/10"
+                    >
+                       Home
+                    </button>
+                 </div>
+
+                 {/* Interaction Log */}
+                 <div className="w-full max-w-[280px] space-y-2">
+                    {remoteLog.map((log, i) => (
+                       <motion.div 
+                         initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                         key={i} className="text-[10px] font-mono text-slate-500 border-l border-blue-500/30 pl-3 py-1"
+                       >
+                          {log}
+                       </motion.div>
+                    ))}
+                 </div>
+              </motion.div>
+           )}
+
 
            {activeTab === 'files' && (
               <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="h-full flex flex-col items-center justify-center space-y-4">

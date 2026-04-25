@@ -40,6 +40,7 @@ model User {
   image         String?
   accounts      Account[]
   devices       Device[]
+  sessions      RemoteSession[]
 }
 
 // RemoteVault Device Management
@@ -60,4 +61,17 @@ model Device {
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  sessions        RemoteSession[]
+}
+
+model RemoteSession {
+  id          String   @id @default(cuid())
+  deviceId    String
+  operatorId  String
+  startTime   DateTime @default(now())
+  endTime     DateTime?
+  status      String   @default("ACTIVE") // ACTIVE, COMPLETED, FAILED
+  
+  device      Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  operator    User     @relation(fields: [operatorId], references: [id], onDelete: Cascade)
 }
