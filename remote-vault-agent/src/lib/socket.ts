@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { getHardwareId, getSystemInfo } from './hardware';
 
-const SOCKET_URL = 'https://remote-vault-core.onrender.com';
+const SOCKET_URL = 'https://aethernode.onrender.com';
 
 class SocketService {
   private socket: Socket | null = null;
